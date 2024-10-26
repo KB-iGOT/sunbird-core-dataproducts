@@ -221,7 +221,7 @@ object UserEnrolmentModel extends AbsDashboardModel {
     )
 
     val mdoReportDF = mdoPlatformReport.union(mdoMarketplaceReport)
-    generateReport(mdoReportDF, reportPath, "mdoid","ConsumptionReport")
+    generateReport(mdoReportDF.coalesce(1), reportPath, "mdoid","ConsumptionReport")
     // to be removed once new security job is created
     if (conf.reportSyncEnable) {
       syncReports(s"${conf.localReportDir}/${reportPath}", reportPath)
