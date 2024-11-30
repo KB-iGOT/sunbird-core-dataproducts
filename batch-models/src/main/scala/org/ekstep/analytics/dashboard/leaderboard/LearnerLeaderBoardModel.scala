@@ -57,8 +57,11 @@ object LearnerLeaderBoardModel extends AbsDashboardModel {
       .select("userOrgID")
     show(orgWithMoreThanNusersDF, "orgs with more than (n=10) users")
 
-    // get intersection of orgs (with atleast one mdo admin and with more than n user)
-    val commonOrgIdsDF = orgWithAtleastOneMdoAdmin.intersect(orgWithMoreThanNusersDF).cache()
+
+    // as per suresh's suggestion, removing the condition of orgs with atleast 1 mdoAdmin
+    val commonOrgIdsDF = orgWithMoreThanNusersDF.cache()
+//    // get intersection of orgs (with atleast one mdo admin and with more than n user)
+//    val commonOrgIdsDF = orgWithAtleastOneMdoAdmin.intersect(orgWithMoreThanNusersDF).cache()
     show(commonOrgIdsDF, "commonOrgs satisfying the condition")
 
     //fetch the users from the above mentioned orgs only
