@@ -217,7 +217,7 @@ object MinistryMetricsModel extends AbsDashboardModel {
     }
 
     // Create DataFrames based on conditions
-    val ministryL1DF = joinedDF.filter(col("sborgtype") === "ministry").select(col("sborgid").alias("ministryID"), col("mapid").alias("ministryMapID"))
+    val ministryL1DF = joinedDF.filter(col("sborgtype") === "ministry" || col("sborgtype") === "state").select(col("sborgid").alias("ministryID"), col("mapid").alias("ministryMapID"))
     val ministryOrgDF = processMinistryL1(ministryL1DF)
 
     val departmentL2DF = joinedDF.filter(col("sborgtype") === "department" || col("sborgsubtype") === "department").select(col("sborgid").alias("departmentID"), col("mapid").alias("departmentMapID"))
