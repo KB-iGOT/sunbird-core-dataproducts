@@ -39,7 +39,7 @@ object KCMModel extends AbsDashboardModel {
       .select(col("courseID").alias("course_id"), col("competency_area_id"), col("competency_theme_id"), col("competency_sub_theme_id"), col("data_last_generated_on"))
 
     // changes for creating avro file for warehouse
-    warehouseCache.write(contentMappingDF.distinct().coalesce(1), conf.dwKcmContentTable)
+    warehouseCache.write(contentMappingDF.coalesce(1), conf.dwKcmContentTable)
 
     val kcmV6 = cache.load("kcmV6").withColumn("hierarchy", from_json(col("hierarchy"), Schema.kcmSchema))
     val kcmArea = kcmV6.withColumn("competencyAreaData", col("hierarchy.categories")(0))
@@ -68,7 +68,7 @@ object KCMModel extends AbsDashboardModel {
         col("subThemeID").alias("competency_sub_theme_id"),col("subThemeName").alias("competency_sub_theme"),col("subThemeDescription").alias("competency_sub_theme_description")
       ).withColumn("data_last_generated_on", currentDateTime)
 
-    warehouseCache.write(competencyDetailsDF.distinct().coalesce(1), conf.dwKcmDictionaryTable)
+    warehouseCache.write(competencyDetailsDF.coalesce(1), conf.dwKcmDictionaryTable)
 
     // Competency reporting
     val competencyReporting = competencyContentMappingDF.join(competencyDetailsDF, Seq("competency_area_id", "competency_theme_id", "competency_sub_theme_id"))
@@ -81,7 +81,7 @@ object KCMModel extends AbsDashboardModel {
         col("competency_theme_description"),
         col("competency_sub_theme"),
         col("competency_sub_theme_description")
-      ).orderBy("content_id").distinct()
+      ).orderBy("content_id")
 
     generateReport(competencyReporting, reportPathContentCompetencyMapping, fileName=fileName)
 
