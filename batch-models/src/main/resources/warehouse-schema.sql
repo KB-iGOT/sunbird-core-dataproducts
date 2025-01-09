@@ -247,8 +247,7 @@ alter table user_enrolments drop column marked_as_not_my_user;
 -- adding new column in content
 ALTER TABLE content ADD COLUMN content_sub_type character varying(50);
 
--- competency v6 doesn't have competency theme type and v6 ids are not integer
-ALTER TABLE kcm_dictionary DROP COLUMN competency_theme_type;
+-- competency v6 ids are not integer
 ALTER TABLE kcm_content_mapping ALTER COLUMN competency_area_id TYPE VARCHAR(255) USING competency_area_id::VARCHAR(255);
 ALTER TABLE kcm_content_mapping ALTER COLUMN competency_theme_id TYPE VARCHAR(255) USING competency_theme_id::VARCHAR(255);
 ALTER TABLE kcm_content_mapping ALTER COLUMN competency_sub_theme_id TYPE VARCHAR(255) USING competency_sub_theme_id::VARCHAR(255);

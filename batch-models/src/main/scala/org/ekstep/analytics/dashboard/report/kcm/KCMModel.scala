@@ -66,7 +66,9 @@ object KCMModel extends AbsDashboardModel {
       .select(col("areaID").alias("competency_area_id"),col("areaName").alias("competency_area"),col("areaDescription").alias("competency_area_description"),
         col("themeID").alias("competency_theme_id"),col("themeName").alias("competency_theme"),col("themeDescription").alias("competency_theme_description"),
         col("subThemeID").alias("competency_sub_theme_id"),col("subThemeName").alias("competency_sub_theme"),col("subThemeDescription").alias("competency_sub_theme_description")
-      ).withColumn("data_last_generated_on", currentDateTime)
+      )
+      .withColumn("competency_theme_type",lit("Null"))  // will be removed once BE fix the bug
+      .withColumn("data_last_generated_on", currentDateTime)
 
     warehouseCache.write(competencyDetailsDF.coalesce(1), conf.dwKcmDictionaryTable)
 

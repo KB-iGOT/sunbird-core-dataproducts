@@ -82,6 +82,7 @@ object UserReportModel extends AbsDashboardModel {
         col("personalDetails.category").alias("Category"),
         col("additionalProperties.externalSystem").alias("External_System"),
         col("additionalProperties.externalSystemId").alias("External_System_Id"),
+        col("employmentDetails.employeeCode").alias("Employee_Id"),
         from_unixtime(col("userOrgCreatedDate"), dateFormat).alias("MDO_Created_On"),
         col("userProfileStatus").alias("Profile_Status"),
         col("weekly_claps_day_before_yesterday"),
