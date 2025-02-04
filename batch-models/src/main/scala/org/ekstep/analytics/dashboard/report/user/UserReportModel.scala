@@ -69,19 +69,19 @@ object UserReportModel extends AbsDashboardModel {
       .withColumn("Total_Completions", coalesce(col("total_event_completions"), lit(0)) + coalesce(col("total_content_completions"), lit(0)))
       .withColumn("MDO_Name", col("userOrgName"))
       .withColumn("Ministry", when(col("ministry_name").isNull, col("userOrgName")).otherwise(col("ministry_name")))
-      .withColumn("Department", when(col("ministry_name").isNotNull && col("dept_name").isNull, col("userOrgName")).otherwise(col("dept_name")))
-      .withColumn("Organization",when(col("ministry_name").isNotNull && col("dept_name").isNotNull, col("userOrgName")))
+      .withColumn("Department", when(col("Ministry").isNotNull && col("Ministry") =!=  col("userOrgName") && (col("dept_name").isNull || col("dept_name") === ""), col("userOrgName")).otherwise(col("dept_name")))
+      .withColumn("Organization",when(col("Ministry") =!=  col("userOrgName") && col("Department") =!= col("userOrgName"), col("userOrgName")).otherwise(lit("")))
       .select(
         col("fullName").alias("Full_Name"),
         col("professionalDetails.designation").alias("Designation"),
         col("personalDetails.primaryEmail").alias("Email"),
         col("personalDetails.mobile").alias("Phone_Number"),
+        col("MDO_Name"),
         col("professionalDetails.group").alias("Group"),
         col("Tag"),
         col("Ministry"),
         col("Department"),
         col("Organization"),
-        col("MDO_Name"),
         from_unixtime(col("userCreatedTimestamp"), dateFormat).alias("User_Registration_Date"),
         col("role").alias("Roles"),
         col("personalDetails.gender").alias("Gender"),
@@ -108,9 +108,9 @@ object UserReportModel extends AbsDashboardModel {
 
     val reportPath = s"${conf.userReportPath}/${today}"
     generateReport(mdoWiseReportDF, reportPath, "mdoid", "UserReport")
-//    if (conf.reportSyncEnable) {
-//      syncReports(s"${conf.localReportDir}/${reportPath}", reportPath)
-//    }
+    //    if (conf.reportSyncEnable) {
+    //      syncReports(s"${conf.localReportDir}/${reportPath}", reportPath)
+    //    }
 
     val df_warehouse = userCompleteData
       .withColumn("marked_as_not_my_user", when(col("userProfileStatus") === "NOT-MY-USER", true).otherwise(false))

@@ -172,17 +172,17 @@ object ZipReportsWithSecurityModel extends AbsDashboardModel {
     // End of zipping the reports and syncing to blob store
     // start zipping warehouse reports
     val today = getDate()
-    var warehousePath = s"${conf.localReportDir}/warehouseReportPath"
-    var userDetailDF = warehouseCache.load(conf.dwUserTable)
-    var courseDF = warehouseCache.load(conf.dwCourseTable)
-    var assessmentDetailsDF = warehouseCache.load(conf.dwAssessmentTable)
-    var bpEnrolmentsDF = warehouseCache.load(conf.dwBPEnrollmentsTable)
-    var contentResourceDF = warehouseCache.load(conf.dwContentResourceTable)
-    var cbPlanDF = warehouseCache.load(conf.dwCBPlanTable)
-    var orgHierarchyDF = cache.load("orgHierarchy")
-    var kcmContentCompetencyMappingDF = warehouseCache.load(conf.dwKcmContentTable)
-    var kcmCompetencyHierarchyDF =  warehouseCache.load(conf.dwKcmDictionaryTable)
-    var enrolmentDetailsDF = warehouseCache.load(conf.dwEnrollmentsTable)
+    val warehousePath = s"${conf.localReportDir}/warehouseReportPath"
+    val userDetailDF = warehouseCache.load(conf.dwUserTable)
+    val courseDF = warehouseCache.load(conf.dwCourseTable)
+    val assessmentDetailsDF = warehouseCache.load(conf.dwAssessmentTable)
+    val bpEnrolmentsDF = warehouseCache.load(conf.dwBPEnrollmentsTable)
+    val contentResourceDF = warehouseCache.load(conf.dwContentResourceTable)
+    val cbPlanDF = warehouseCache.load(conf.dwCBPlanTable)
+    val orgHierarchyDF = cache.load("orgHierarchy")
+    val kcmContentCompetencyMappingDF = warehouseCache.load(conf.dwKcmContentTable)
+    val kcmCompetencyHierarchyDF =  warehouseCache.load(conf.dwKcmDictionaryTable)
+    val enrolmentDetailsDF = warehouseCache.load(conf.dwEnrollmentsTable)
 
     userDetailDF.write.option("header", "true").csv(s"${warehousePath}/useDetails.csv")
     courseDF.write.option("header", "true").csv(s"${warehousePath}/userDetails.csv")
@@ -219,6 +219,6 @@ object ZipReportsWithSecurityModel extends AbsDashboardModel {
 
       // Exit with status 1
       System.exit(1)
-  }
+   }
   }
 }

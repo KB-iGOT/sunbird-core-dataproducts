@@ -22,7 +22,7 @@ object BlendedProgramReportModel extends AbsDashboardModel {
    */
   def processData(timestamp: Long)(implicit spark: SparkSession, sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
     try{
-    val today = getDate()
+      val today = getDate()
 
     // get user and user org data
     val (orgDF, userDF, userOrgDF) = getOrgUserDataFrames()
@@ -176,8 +176,8 @@ object BlendedProgramReportModel extends AbsDashboardModel {
     val fullReportDF = fullDF
       .withColumn("MDO_Name", col("userOrgName"))
       .withColumn("Ministry", when(col("ministry_name").isNull, col("userOrgName")).otherwise(col("ministry_name")))
-      .withColumn("Department", when(col("ministry_name").isNotNull && col("dept_name").isNull, col("userOrgName")).otherwise(col("dept_name")))
-      .withColumn("Organization",when(col("ministry_name").isNotNull && col("dept_name").isNotNull, col("userOrgName")))
+      .withColumn("Department", when(col("Ministry").isNotNull && col("Ministry") =!=  col("userOrgName") && (col("dept_name").isNull || col("dept_name") === ""), col("userOrgName")).otherwise(col("dept_name")))
+      .withColumn("Organization",when(col("Ministry") =!=  col("userOrgName") && col("Department") =!= col("userOrgName"), col("userOrgName")).otherwise(lit("")))
       .select(
         col("userID"),
         col("userOrgID"),
@@ -296,14 +296,14 @@ object BlendedProgramReportModel extends AbsDashboardModel {
     warehouseCache.write(df_warehouse.coalesce(1), conf.dwBPEnrollmentsTable)
 
     Redis.closeRedisConnect()
-  }catch {
-    case e: Exception =>
-      // Log the error
-      println(s"Error occurred during DataExhaustModel processing: ${e.getMessage}", e)
+    }catch {
+      case e: Exception =>
+        // Log the error
+        println(s"Error occurred during DataExhaustModel processing: ${e.getMessage}", e)
 
-      // Exit with status 1
-      System.exit(1)
-  }
+        // Exit with status 1
+        System.exit(1)
+    }
   }
 
   def bpBatchDataFrame()(implicit spark: SparkSession, conf: DashboardConfig): (DataFrame, DataFrame) = {
@@ -368,4 +368,3 @@ object BlendedProgramReportModel extends AbsDashboardModel {
     bpChildL1DF.union(bpChildL2DF)
   }
 }
-

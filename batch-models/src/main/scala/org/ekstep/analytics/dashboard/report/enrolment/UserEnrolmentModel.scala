@@ -23,7 +23,7 @@ object UserEnrolmentModel extends AbsDashboardModel {
    * @param timestamp unique timestamp from the start of the processing
    */
   def processData(timestamp: Long)(implicit spark: SparkSession, sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
-   try{
+    try{
     val today = getDate()
 
     //GET ORG DATA
@@ -133,8 +133,8 @@ object UserEnrolmentModel extends AbsDashboardModel {
     val fullReportDF = enrolmentWithACBP
       .withColumn("MDO_Name", col("userOrgName"))
       .withColumn("Ministry", when(col("ministry_name").isNull, col("userOrgName")).otherwise(col("ministry_name")))
-      .withColumn("Department", when(col("ministry_name").isNotNull && col("dept_name").isNull, col("userOrgName")).otherwise(col("dept_name")))
-      .withColumn("Organization",when(col("ministry_name").isNotNull && col("dept_name").isNotNull, col("userOrgName")))
+      .withColumn("Department", when(col("Ministry").isNotNull && col("Ministry") =!=  col("userOrgName") && (col("dept_name").isNull || col("dept_name") === ""), col("userOrgName")).otherwise(col("dept_name")))
+      .withColumn("Organization",when(col("Ministry") =!=  col("userOrgName") && col("Department") =!= col("userOrgName"), col("userOrgName")).otherwise(lit("")))
       .select(
         col("userID"),
         col("userOrgID"),
@@ -189,8 +189,8 @@ object UserEnrolmentModel extends AbsDashboardModel {
     val mdoMarketplaceReport = marketPlaceEnrolmentsWithUserDetailsDF
       .withColumn("MDO_Name", col("userOrgName"))
       .withColumn("Ministry", when(col("ministry_name").isNull, col("userOrgName")).otherwise(col("ministry_name")))
-      .withColumn("Department", when(col("ministry_name").isNotNull && col("dept_name").isNull, col("userOrgName")).otherwise(col("dept_name")))
-      .withColumn("Organization",when(col("ministry_name").isNotNull && col("dept_name").isNotNull, col("userOrgName")))
+      .withColumn("Department", when(col("Ministry").isNotNull && col("Ministry") =!=  col("userOrgName") && (col("dept_name").isNull || col("dept_name") === ""), col("userOrgName")).otherwise(col("dept_name")))
+      .withColumn("Organization",when(col("Ministry") =!=  col("userOrgName") && col("Department") =!= col("userOrgName"), col("userOrgName")).otherwise(lit("")))
       .select(
         col("fullName").alias("Full_Name"),
         col("professionalDetails.designation").alias("Designation"),
@@ -231,7 +231,7 @@ object UserEnrolmentModel extends AbsDashboardModel {
         col("Report_Last_Generated_On"),
         col("userStatus"),
         col("live_cbp_plan_mandate").alias("Live_CBP_Plan_Mandate")
-    )
+      )
 
     val mdoPlatformReport = fullReportDF.select(
       col("Full_Name"),col("Designation"),col("Email"),col("Phone_Number"),col("MDO_Name"),col("Group"),col("Tag"),col("Ministry"),col("Department"),
@@ -332,6 +332,5 @@ object UserEnrolmentModel extends AbsDashboardModel {
       // Exit with status 1
       System.exit(1)
   }
-  }
+ }
 }
-
