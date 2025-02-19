@@ -22,20 +22,18 @@ try{
     val query = """SELECT DISTINCT(uid) as user_ID FROM \"summary-events\" WHERE dimensions_type='app' AND __time > CURRENT_TIMESTAMP - INTERVAL '24' HOUR"""
     val usersLoggedInLast24HrsDF = druidDFOption(query, conf.sparkDruidRouterHost).orNull
     val twentyFoutHrActiveUserDF = userDF.join(usersLoggedInLast24HrsDF, Seq("user_ID"), "inner")
-    val twentyFourHrActiveUserCountMinistryDF = twentyFoutHrActiveUserDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
+    val joined24HrActiveUserDF = twentyFoutHrActiveUserDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
+    val twentyFourHrActiveUserCountMinistryDF = joined24HrActiveUserDF
       .groupBy("ministry")
       .agg(count("user_ID").alias("activeUserCount"))
-
-    val twentyFourHrActiveUserCountDeptDF = twentyFoutHrActiveUserDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
+    val twentyFourHrActiveUserCountDeptDF = joined24HrActiveUserDF
       .groupBy("department")
-      .agg(count("user_ID").alias("userCount"))
+      .agg(count("user_ID").alias("activeUserCount"))
       .select(col("department").alias("ministry"), col("activeUserCount"))
-
-    val twentyFourHrActiveUserCountOrgDF = twentyFoutHrActiveUserDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
-      .groupBy("organization")
-      .agg(count("user_ID").alias("userCount"))
-      .select(col("organization").alias("ministry"), col("activeUserCount"))
-
+    val twentyFourHrActiveUserCountOrgDF = joined24HrActiveUserDF
+      .groupBy("mdo_id")
+      .agg(count("user_ID").alias("activeUserCount"))
+      .select(col("mdo_id").alias("ministry"), col("activeUserCount"))
     val twentyFourHrActiveUserCountDF = twentyFourHrActiveUserCountMinistryDF.union(twentyFourHrActiveUserCountDeptDF).union(twentyFourHrActiveUserCountOrgDF)
     // Join the user and enrolment data
     val joinUserDF = enrolmentDF.join(userDF, enrolmentDF("user_id") === userDF("user_ID"), "inner") // Inner join on user_id
@@ -43,7 +41,6 @@ try{
     // Join with the org_hierarchy data to get ministryID for all DF operations
 
     val joinedWithMinistryIDDF = joinUserDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
-
     val certificateMinistryDF = joinedWithMinistryIDDF
       .groupBy("ministry")
       .agg(countDistinct("certificate_id").alias("certificateCount"))
@@ -54,13 +51,12 @@ try{
       .select(col("department").alias("ministry"), col("certificateCount"))
 
     val certificateOrgDF = joinedWithMinistryIDDF
-      .groupBy("organization")
+      .groupBy("mdo_id")
       .agg(countDistinct("certificate_id").alias("certificateCount"))
-      .select(col("organization").alias("ministry"), col("certificateCount"))
+      .select(col("mdo_id").alias("ministry"), col("certificateCount"))
 
 
     val certificateResultDF = certificateMinistryDF.union(certificateDeptDF).union(certificateOrgDF)
-
     // Aggregate and create enrolmentResultDF
 
     val enrolmentMinistrytDF = joinedWithMinistryIDDF
@@ -73,12 +69,11 @@ try{
       .select(col("department").alias("ministry"), col("enrolmentCount"))
 
     val enrolmentOrgDF = joinedWithMinistryIDDF
-      .groupBy("organization")
+      .groupBy("mdo_id")
       .agg(count("user_ID").alias("enrolmentCount"))
-      .select(col("organization").alias("ministry"), col("enrolmentCount"))
+      .select(col("mdo_id").alias("ministry"), col("enrolmentCount"))
 
     val enrolmentResultDF = enrolmentMinistrytDF.union(enrolmentDeptDF).union(enrolmentOrgDF)
-
     // Create userCountDF
     val userCountMinistryDF = userDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
       .groupBy("ministry")
@@ -90,9 +85,9 @@ try{
       .select(col("department").alias("ministry"), col("userCount"))
 
     val userCountOrgDF = userDF.join(org_hierarchyDF, userDF("user_org_id") === org_hierarchyDF("mdo_id"), "left_outer")
-      .groupBy("organization")
+      .groupBy("mdo_id")
       .agg(count("user_ID").alias("userCount"))
-      .select(col("organization").alias("ministry"), col("userCount"))
+      .select(col("mdo_id").alias("ministry"), col("userCount"))
 
     val userCountDF = userCountMinistryDF.union(userCountDeptDF).union(userCountOrgDF)
     val finalActiveUserCountDF = twentyFourHrActiveUserCountDF.join(ministryNamesDF, Seq("ministry"), "inner").select(col("ministryID"), coalesce(col("activeUserCount"), lit(0)).alias("activeUserCount"))
