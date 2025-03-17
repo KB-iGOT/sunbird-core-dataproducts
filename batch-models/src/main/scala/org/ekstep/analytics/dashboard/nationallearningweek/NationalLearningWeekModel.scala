@@ -128,7 +128,6 @@ object NationalLearningWeekModel extends AbsDashboardModel {
       .filter(col("ministry_id").isNotNull)
 
     Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", totalCertificatesGeneratedInSLWByMinistryDF, "ministry_id", "total_certificates")
-    */
     val slwStartDate = stateLearningWeekStartString.split(" ")(0)
     val slwEndDate = stateLearningWeekEndString.split(" ")(0)
     val slwDateConditions = s"""{"range": {"startDate": {"gte": "${slwStartDate}", "lte": "${slwEndDate}"}}}"""
