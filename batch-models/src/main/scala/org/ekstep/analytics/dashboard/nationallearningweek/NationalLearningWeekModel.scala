@@ -49,6 +49,15 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val eventsDF = cache.load("eventDetails")
     val orgHierarchyDF = cache.load("orgHierarchy")
 
+    val maharashtraOnlyEventsEnrolments =  eventsEnrolmentsDF
+      .filter(col("ministry_id") === "01358339603629670470")
+    val maharashtraOnlyContentEnrolments = contentEnrolmentsDF
+      .filter(col("ministry_id") === "01358339603629670470")
+    val nonMaharashtraOnlyEventEnrolments = eventsEnrolmentsDF
+      .filter(col("ministry_id") =!= "01358339603629670470")
+    val nonMaharashtraOnlyContentEnrolments = contentEnrolmentsDF
+      .filter(col("ministry_id") =!= "01358339603629670470")
+
     val eventCertificatesGeneratedSLWYdayDF = eventsEnrolmentsDF
          .filter(col("completed_on_datetime") >= previousStart && col("completed_on_datetime") <= previousEnd)
          .filter(col("certificate_id").isNotNull)
@@ -67,7 +76,6 @@ object NationalLearningWeekModel extends AbsDashboardModel {
           .groupBy("ministry_id")
           .agg(count("*").alias("content_certificate_count"))
 
-
     val totalCertificatesGeneratedSLWYdayByOrgDF = eventCertificatesGeneratedSLWYdayDF
           .join(contentCertificatesGeneratedSLWYdayDF, Seq("ministry_id"), "outer")
           .withColumn("total_certificate_generatedYday_slw_count", coalesce(col("event_certificate_count"), lit(0)) +
@@ -76,7 +84,8 @@ object NationalLearningWeekModel extends AbsDashboardModel {
 
     Redis.dispatchDataFrame[Int]("dashboard_certificate_generated_yday_by_ministry_slw_count", totalCertificatesGeneratedSLWYdayByOrgDF, "ministry_id", "total_certificate_generatedYday_slw_count")
 
-    val eventEnrolmentsInSLWDF = eventsEnrolmentsDF
+    // total enrolment stats starts
+    val eventEnrolmentsInSLWDF = nonMaharashtraOnlyEventEnrolments
           .filter(col("enrolled_on_datetime") >= stateLearningWeekStartString && col("enrolled_on_datetime") <= stateLearningWeekEndString)
           .join(userDetailsDF, Seq("user_id"), "left")
           .join(orgHierarchyDF, Seq("mdo_id"), "left")
@@ -84,7 +93,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
           .groupBy("ministry_id")
           .agg(count("*").alias("event_enrolment_count"))
 
-    val contentEnrolmentsInSLWDF = contentEnrolmentsDF
+    val contentEnrolmentsInSLWDF = nonMaharashtraOnlyContentEnrolments
           .filter(col("enrolled_on") >= stateLearningWeekStartString && col("enrolled_on") <= stateLearningWeekEndString)
           .join(userDetailsDF,Seq("user_id"), "left")
           .join(orgHierarchyDF, Seq("mdo_id"), "left")
@@ -98,10 +107,38 @@ object NationalLearningWeekModel extends AbsDashboardModel {
            (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
           .filter(col("ministry_id").isNotNull)
 
-    Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", totalEnrolmentsInSLWByMinistryDF, "ministry_id", "total_enrolments")
+    // for maharashtra
+    val maharashtraEventEnrolments = maharashtraOnlyEventsEnrolments
+      .filter(col("enrolled_on_datetime") >= "2023-04-01 00:00:00" && col("enrolled_on_datetime") <= "2025-05-31 23:59:59")
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("event_enrolment_count"))
 
+    val maharashtraContentEnrolments = maharashtraOnlyContentEnrolments
+      .filter(col("enrolled_on") >= "2023-04-01 00:00:00" && col("enrolled_on") <= "2025-05-31 23:59:59")
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_enrolment_count"))
 
-    val eventCertificatesGeneratedInSLWDF = eventsEnrolmentsDF
+    val maharashtraTotalEnrolments = maharashtraEventEnrolments.join(maharashtraContentEnrolments, Seq("ministry_id"), "full_outer")
+      .select(
+        col("ministry_id"),
+        coalesce(col("event_enrolment_count"), lit(0)).alias("event_enrolment_count"),
+        coalesce(col("content_enrolment_count"), lit(0)).alias("content_enrolment_count"),
+        (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
+      .filter(col("ministry_id").isNotNull
+      )
+
+    Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", totalEnrolmentsInSLWByMinistryDF.filter(col("ministry_id") =!= ""), "ministry_id", "total_enrolments")
+    Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", maharashtraTotalEnrolments, "ministry_id", "total_enrolments")
+// total enrolments stats ends
+
+    // certificate generated stats starts
+    val eventCertificatesGeneratedInSLWDF = nonMaharashtraOnlyEventEnrolments
       .filter(col("completed_on_datetime") >= stateLearningWeekStartString && col("completed_on_datetime") <= stateLearningWeekEndString)
       .filter(col("certificate_id").isNotNull)
       .join(userDetailsDF, Seq("user_id"), "left")
@@ -110,9 +147,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
       .groupBy("ministry_id")
       .agg(countDistinct("certificate_id").alias("event_certificate_count"))
 
-
-
-    val contentCertificatesGeneratedInSLWDF = contentEnrolmentsDF
+    val contentCertificatesGeneratedInSLWDF = nonMaharashtraOnlyEventEnrolments
       .filter(col("first_completed_on") >= stateLearningWeekStartString && col("first_completed_on") <= stateLearningWeekEndString)
       .filter(col("certificate_id").isNotNull)
       .join(userDetailsDF,Seq("user_id"), "left")
@@ -127,8 +162,38 @@ object NationalLearningWeekModel extends AbsDashboardModel {
         (coalesce(col("event_certificate_count"), lit(0)) + coalesce(col("content_certificate_count"), lit(0))).alias("total_certificates"))
       .filter(col("ministry_id").isNotNull)
 
-    Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", totalCertificatesGeneratedInSLWByMinistryDF, "ministry_id", "total_certificates")
+    //maharashtra certificates generated
+    val maharshtraEventCertificates = maharashtraOnlyEventsEnrolments
+      .filter(col("completed_on_datetime") >= "2023-04-01 00:00:00" && col("completed_on_datetime") <= "2025-05-31 23:59:59")
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(countDistinct("certificate_id").alias("event_certificate_count"))
 
+    val maharshtraContentCertificates = maharashtraOnlyContentEnrolments
+      .filter(col("first_completed_on") >= "2023-04-01 00:00:00" && col("first_completed_on") <= "2025-05-31 23:59:59")
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_certificate_count"))
+
+    val maharashtraTotalCertificates = maharshtraEventCertificates.join(maharshtraContentCertificates, Seq("ministry_id"), "full_outer")
+      .select(
+        col("ministry_id"),
+        coalesce(col("event_certificate_count"), lit(0)).alias("event_certificate_count"),
+        coalesce(col("content_certificate_count"), lit(0)).alias("content_certificate_count"),
+        (coalesce(col("event_certificate_count"), lit(0)) + coalesce(col("content_certificate_count"), lit(0))).alias("total_certificates"))
+      .filter(col("ministry_id").isNotNull)
+
+    Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", totalCertificatesGeneratedInSLWByMinistryDF, "ministry_id", "total_certificates")
+    Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", maharashtraTotalCertificates, "ministry_id", "total_certificates")
+    // certificate generated stats ends
+
+    // events published stats starts
     val slwStartDate = stateLearningWeekStartString.split(" ")(0)
     val slwEndDate = stateLearningWeekEndString.split(" ")(0)
     val slwDateConditions = s"""{"range": {"startDate": {"gte": "${slwStartDate}", "lte": "${slwEndDate}"}}}"""
@@ -141,23 +206,25 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val eventDataDF = elasticSearchDataFrame(conf.sparkElasticsearchConnectionHost, "compositesearch", eventQuery, fieldsRequired, arrayFieldsRequired)
     // val eventsPublishedDF = eventDataDF.agg(
     // lit("01397282245867929648").alias("ministry_id"), count("identifier").alias("events_published_count"))
-    val publishedEventsCount = eventDataDF.select(countDistinct("identifier")).first().getLong(0)
+    val publishedEventsCount = eventDataDF.filter(col("createdFor") =!= "").select(countDistinct("identifier")).first().getLong(0)
 
     Redis.update("dashboard_events_published_by_ministry_slw_count", publishedEventsCount.toString)
+    // events published stats ends
 
-    val userEventCertificatesDF = eventsEnrolmentsDF
+    // cassandra leaderboard updates starts
+    val userEventCertificatesDF = nonMaharashtraOnlyEventEnrolments
       .filter(col("completed_on_datetime") >= stateLearningWeekStartString && col("completed_on_datetime") <= stateLearningWeekEndString)
       .filter(col("certificate_id").isNotNull)
       .groupBy("user_id")
       .agg(countDistinct("certificate_id").alias("event_certificate_count"))
 
-    val userContentCertificatesDF = contentEnrolmentsDF
+    val userContentCertificatesDF = nonMaharashtraOnlyContentEnrolments
       .filter(col("first_completed_on") >= stateLearningWeekStartString && col("first_completed_on") <= stateLearningWeekEndString)
       .filter(col("certificate_id").isNotNull)
       .groupBy("user_id")
       .agg(count("*").alias("content_certificate_count"))
 
-    val userEventLearningHoursDF = eventsEnrolmentsDF
+    val userEventLearningHoursDF = nonMaharashtraOnlyEventEnrolments
       .filter(col("completed_on_datetime") >= stateLearningWeekStartString && col("completed_on_datetime") <= stateLearningWeekEndString)
       .filter(col("certificate_id").isNotNull)
       .join(eventsDF.withColumnRenamed("duration", "event_complete_duration"), Seq("event_id"), "left")
@@ -165,7 +232,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
       .groupBy("user_id")
       .agg(sum(coalesce(col("event_duration_hours"), lit(0))).alias("event_learning_hours"))
 
-    val userContentLearningHoursDF = contentEnrolmentsDF
+    val userContentLearningHoursDF = nonMaharashtraOnlyContentEnrolments
       .filter(col("first_completed_on") >= stateLearningWeekStartString && col("first_completed_on") <= stateLearningWeekEndString) // Fixed end date condition
       .filter(col("certificate_id").isNotNull)
       .join(contentDF.filter(col("content_sub_type").isin("Course", "Moderated Course")), Seq("content_id"), "inner")
@@ -185,24 +252,63 @@ object NationalLearningWeekModel extends AbsDashboardModel {
         coalesce(col("content_learning_hours"), lit(0)).alias("content_learning_hours"),
         round(coalesce(col("event_learning_hours"), lit(0)) + coalesce(col("content_learning_hours"), lit(0)), 2).alias("total_learning_hours"))
 
+    val maharashtraUserEventCertificatesDF = maharashtraOnlyEventsEnrolments
+      .filter(col("completed_on_datetime") >= "2023-04-01 00:00:00" && col("completed_on_datetime") <= "2025-05-31 23:59:59")
+      .filter(col("certificate_id").isNotNull)
+      .groupBy("user_id")
+      .agg(countDistinct("certificate_id").alias("event_certificate_count"))
+    val maharashtraUserContentCertificatesDF = maharashtraOnlyContentEnrolments
+      .filter(col("first_completed_on") >= "2023-04-01 00:00:00" && col("first_completed_on") <= "2025-05-31 23:59:59")
+      .filter(col("certificated_id").isNotNull)
+      .groupBy("user_id")
+      .agg(count("*").alias("content_certificate_count"))
+    val maharashtraUserEventLearningHoursDF = maharashtraOnlyEventsEnrolments
+      .filter(col("completed_on_datetime") >= "2023-04-01 00:00:00" && col("completed_on_datetime") <= "2025-05-31 23:59:59")
+      .filter(col("certificated_id").isNotNull)
+      .join(eventsDF.withColumnRenamed("duration", "event_complete_duration"), Seq("event_id"), "left")
+      .withColumn("event_duration_hours", timeToHoursUDF(col("event_complete_duration"))) // Convert directly from eventsEnrolmentsDF
+      .groupBy("user_id")
+      .agg(sum(coalesce(col("event_duration_hours"), lit(0))).alias("event_learning_hours"))
+    val userContentLearningHoursDF = nonMaharashtraOnlyContentEnrolments
+      .filter(col("first_completed_on") >= "2023-04-01 00:00:00" && col("first_completed_on") <= "2025-05-31 23:59:59") // Fixed end date condition
+      .filter(col("certificated_id").isNotNull)
+      .join(contentDF, Seq("content_id"), "left") // Join first to get content_duration
+      .withColumn("content_duration_hours", timeToHoursUDF(col("content_duration"))) // Convert after join
+      .groupBy("user_id")
+      .agg(sum(coalesce(col("content_duration_hours"), lit(0))).alias("content_learning_hours"))
+    val maharashtraUserTotalCertificatesDF = maharashtraUserEventCertificatesDF
+      .join(maharashtraUserContentCertificatesDF, Seq("user_id"), "full_outer")
+      .select(col("user_id"), (coalesce(col("event_certificate_count"), lit(0)) + coalesce(col("content_certificate_count"), lit(0))).alias("total_certificates"))
+    val maharashtraUserTotalLearningHoursDF = maharashtraUserEventLearningHoursDF
+      .join(maharashtraUserContentLearningHoursDF, Seq("user_id"), "full_outer")
+      .select(
+        col("user_id"),
+        coalesce(col("event_learning_hours"), lit(0)).alias("event_learning_hours"),
+        coalesce(col("content_learning_hours"), lit(0)).alias("content_learning_hours"),
+        round(coalesce(col("event_learning_hours"), lit(0)) + coalesce(col("content_learning_hours"), lit(0)), 2).alias("total_learning_hours"))
+
 
     val karmaPointsDataDF = cache.load("userKarmaPoints")
+    val nonMaharashtraKpoints = karmaPointsDataDF
       .filter(col("credit_date") >= stateLearningWeekStartString && col("credit_date") <= stateLearningWeekEndString)
+      .groupBy(col("userid")).agg(sum(col("points")).alias("total_points"), max(col("credit_date")).alias("last_credit_date"))
+
+    val maharashtraKpoints = karmaPointsDataDF
+      .filter(col("credit_date") >= "2023-04-01 00:00:00" && col("credit_date") <= "2025-05-31 23:59:59")
       .groupBy(col("userid")).agg(sum(col("points")).alias("total_points"), max(col("credit_date")).alias("last_credit_date"))
 
     val (orgDF, userDF, userOrgDF) = getOrgUserDataFrames()
 
-    val userOrgData = userOrgDF.join(userDF, userOrgDF("userID") === userDF("userID"), "outer")
-      .select(
-        userOrgDF("userID").alias("userid"),
-        userOrgDF("userOrgID").alias("org_id"),
-        userOrgDF("fullName").alias("fullname"),
-        userOrgDF("userOrgName").alias("org_name"),
-        userOrgDF("professionalDetails.designation").alias("designation"),
-        userOrgDF("userProfileImgUrl").alias("profile_image"))
+    val userOrgData = userOrgDF.select(
+        col("userID").alias("userid"),
+        col("userOrgID").alias("org_id"),
+        col("fullName").alias("fullname"),
+        col("userOrgName").alias("org_name"),
+        col("professionalDetails.designation").alias("designation"),
+        col("userProfileImgUrl").alias("profile_image"))
 
 
-    val userLeaderBoardDataDF = userOrgData.join(karmaPointsDataDF, Seq("userid"), "left")
+    val userLeaderBoardDataDF = userOrgData.join(nonMaharashtraKpoints, Seq("userid"), "left")
       .filter(col("org_id") =!= "")
       .select(userOrgData("userid").alias("user_id"),
         userOrgData("org_id"),
@@ -210,11 +316,24 @@ object NationalLearningWeekModel extends AbsDashboardModel {
         userOrgData("designation"),
         userOrgData("org_name"),
         userOrgData("profile_image"),
-        karmaPointsDataDF("total_points"),
-        karmaPointsDataDF("last_credit_date"))
+        nonMaharashtraKpoints("total_points"),
+        nonMaharashtraKpoints("last_credit_date"))
+
+    val maharashtraUserLeaderBoardDataDF = userOrgData.join(maharashtraKpoints, Seq("userid"), "left")
+      .filter(col("org_id") =!= "")
+      .select(userOrgData("userid").alias("user_id"),
+        userOrgData("org_id"),
+        userOrgData("fullname"),
+        userOrgData("designation"),
+        userOrgData("org_name"),
+        userOrgData("profile_image"),
+        maharashtraKpoints("total_points"),
+        maharashtraKpoints("last_credit_date"))
+
+    val combinedLeaderboardDataDF = userLeaderBoardDataDF.union(maharashtraUserLeaderBoardDataDF)
 
     val windowSpecRank = Window.partitionBy("org_id").orderBy(desc("total_points"))
-    val userLeaderBoardOrderedDataDF = userLeaderBoardDataDF.withColumn("rank", dense_rank().over(windowSpecRank))
+    val userLeaderBoardOrderedDataDF = combinedLeaderboardDataDF.withColumn("rank", dense_rank().over(windowSpecRank))
     val windowSpecRow = Window.partitionBy("org_id").orderBy(col("rank"), col("last_credit_date").asc)
     val finalUserLeaderBoardDataDF = userLeaderBoardOrderedDataDF.withColumn("row_num", row_number.over(windowSpecRow))
 
@@ -224,8 +343,17 @@ object NationalLearningWeekModel extends AbsDashboardModel {
         col("user_id"),
         coalesce(col("total_certificates"), lit(0)).alias("count"),
         coalesce(col("total_learning_hours"), lit(0.0)).alias("total_learning_hours"))
+    val maharashtraUserStatsDF = maharashtraUserTotalCertificatesDF
+      .join(maharashtraUserTotalLearningHoursDF, Seq("user_id"), "full_outer")
+      .select(
+        col("user_id"),
+        coalesce(col("total_certificates"), lit(0)).alias("count"),
+        coalesce(col("total_learning_hours"), lit(0.0)).alias("total_learning_hours"))
 
-    val userStatsDetailedDF = userStatsDF.join(finalUserLeaderBoardDataDF, Seq("user_id"), "right")
+    val combinedUserStats = userStatsDF.union(maharashtraUserStatsDF)
+
+
+    val userStatsDetailedDF = combinedUserStats.join(finalUserLeaderBoardDataDF, Seq("user_id"), "right")
 
     val selectedColUserLeaderboardDF = userStatsDetailedDF
       .select(
@@ -358,6 +486,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
       col("row_num"))
 
     writeToCassandra(finalDF, conf.cassandraUserKeyspace, conf.cassandraSLWMdoLeaderboardTable)
+    // cassandra leaderboard updates ends
   }catch {
     case e: Exception =>
       println(s"Error occurred during NationalLearningWeekModel processing: ${e.getMessage}", e)
