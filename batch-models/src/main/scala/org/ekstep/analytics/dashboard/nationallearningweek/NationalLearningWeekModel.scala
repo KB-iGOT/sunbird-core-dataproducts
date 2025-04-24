@@ -49,56 +49,84 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val orgHierarchyDF = cache.load("orgHierarchy")
 
     val eventCertificatesGeneratedSLWYdayDF = eventsEnrolmentsDF
-         .filter(col("status") === "completed")
-         .filter(col("enrolled_on_datetime") >= previousStart && col("enrolled_on_datetime") <= previousEnd)
-         .filter(col("certificate_id").isNotNull)
-         .join(userDetailsDF, Seq("user_id"), "left")
-         .join(orgHierarchyDF, Seq("mdo_id"), "left")
-         .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id"))) // Replace null ministry_id with mdo_id
-         .groupBy("ministry_id")
-         .agg(countDistinct("certificate_id").alias("event_certificate_count"))
+      .filter(col("completed_on_datetime") >= previousStart && col("completed_on_datetime") <= previousEnd)
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id"))) // Replace null ministry_id with mdo_id
+      .groupBy("ministry_id")
+      .agg(countDistinct("certificate_id").alias("event_certificate_count"))
 
     val contentCertificatesGeneratedSLWYdayDF = contentEnrolmentsDF
-          .filter(col("last_certificate_generated_on") >= previousStart && col("last_certificate_generated_on") <= previousEnd)
-          .filter(col("certificate_generated") === "Yes")
-          .join(userDetailsDF,Seq("user_id"), "left")
-          .join(orgHierarchyDF, Seq("mdo_id"), "left")
-          .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
-          .groupBy("ministry_id")
-          .agg(count("*").alias("content_certificate_count"))
+      .filter(col("first_completed_on") >= previousStart && col("first_completed_on") <= previousEnd)
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_certificate_count"))
 
 
     val totalCertificatesGeneratedSLWYdayByOrgDF = eventCertificatesGeneratedSLWYdayDF
-          .join(contentCertificatesGeneratedSLWYdayDF, Seq("ministry_id"), "outer")
-          .withColumn("total_certificate_generatedYday_slw_count", coalesce(col("event_certificate_count"), lit(0)) +
-           coalesce(col("content_certificate_count"), lit(0)))
-          .filter(col("ministry_id").isNotNull)
+      .join(contentCertificatesGeneratedSLWYdayDF, Seq("ministry_id"), "outer")
+      .withColumn("total_certificate_generatedYday_slw_count", coalesce(col("event_certificate_count"), lit(0)) +
+        coalesce(col("content_certificate_count"), lit(0)))
+      .filter(col("ministry_id").isNotNull)
 
     Redis.dispatchDataFrame[Int]("dashboard_certificate_generated_yday_by_ministry_slw_count", totalCertificatesGeneratedSLWYdayByOrgDF, "ministry_id", "total_certificate_generatedYday_slw_count")
 
     val eventEnrolmentsInSLWDF = eventsEnrolmentsDF
-          .filter(col("enrolled_on_datetime") >= stateLearningWeekStartString && col("enrolled_on_datetime") <= stateLearningWeekEndString)
-          .join(userDetailsDF, Seq("user_id"), "left")
-          .join(orgHierarchyDF, Seq("mdo_id"), "left")
-          .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
-          .groupBy("ministry_id")
-          .agg(countDistinct("certificate_id").alias("event_enrolment_count"))
+      .filter(col("enrolled_on_datetime") >= stateLearningWeekStartString && col("enrolled_on_datetime") <= stateLearningWeekEndString)
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("event_enrolment_count"))
 
     val contentEnrolmentsInSLWDF = contentEnrolmentsDF
-          .filter(col("enrolled_on") >= stateLearningWeekStartString && col("enrolled_on") <= stateLearningWeekEndString)
-          .join(userDetailsDF,Seq("user_id"), "left")
-          .join(orgHierarchyDF, Seq("mdo_id"), "left")
-          .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
-          .groupBy("ministry_id")
-          .agg(count("*").alias("content_enrolment_count"))
+      .filter(col("enrolled_on") >= stateLearningWeekStartString && col("enrolled_on") <= stateLearningWeekEndString)
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_enrolment_count"))
 
     val totalEnrolmentsInSLWByMinistryDF = eventEnrolmentsInSLWDF
-          .join(contentEnrolmentsInSLWDF, Seq("ministry_id"), "full_outer")
-          .select(col("ministry_id"), coalesce(col("event_enrolment_count"), lit(0)).alias("event_enrolment_count"), coalesce(col("content_enrolment_count"), lit(0)).alias("content_enrolment_count"),
-           (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
-          .filter(col("ministry_id").isNotNull)
+      .join(contentEnrolmentsInSLWDF, Seq("ministry_id"), "full_outer")
+      .select(col("ministry_id"), coalesce(col("event_enrolment_count"), lit(0)).alias("event_enrolment_count"), coalesce(col("content_enrolment_count"), lit(0)).alias("content_enrolment_count"),
+        (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
+      .filter(col("ministry_id").isNotNull)
 
-    Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", totalEnrolmentsInSLWByMinistryDF, "ministry_id", "total_enrolments")
+      // for maharashtra
+    val maharashtraEventEnrolments = eventsEnrolmentsDF
+      .filter(col("ministry_id") === "")
+      .filter(col("enrolled_on_datetime") >= "" && col("enrolled_on_datetime") <= "")
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("event_enrolment_count"))
+
+    val maharashtraContentEnrolments = contentEnrolmentsDF
+      .filter(col("ministry_id") === "")
+      .filter(col("enrolled_on") >= "" && col("enrolled_on") <= "")
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_enrolment_count"))
+
+    val maharashtraTotalEnrolments = maharashtraEventEnrolments.join(maharashtraContentEnrolments, Seq("ministry_id"), "full_outer")
+      .select(
+        col("ministry_id"),
+        coalesce(col("event_enrolment_count"), lit(0)).alias("event_enrolment_count"),
+        coalesce(col("content_enrolment_count"), lit(0)).alias("content_enrolment_count"),
+        (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
+      .filter(col("ministry_id").isNotNull
+      )
+
+      Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", totalEnrolmentsInSLWByMinistryDF.filter(col("ministry_id") =!= ""), "ministry_id", "total_enrolments")
+      Redis.dispatchDataFrame[Int]("dashboard_total_enrolment_by_ministry_slw_count", maharashtraTotalEnrolments, "ministry_id", "total_enrolments")
 
 
     val eventCertificatesGeneratedInSLWDF = eventsEnrolmentsDF
@@ -127,7 +155,38 @@ object NationalLearningWeekModel extends AbsDashboardModel {
         (coalesce(col("event_certificate_count"), lit(0)) + coalesce(col("content_certificate_count"), lit(0))).alias("total_certificates"))
       .filter(col("ministry_id").isNotNull)
 
-    Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", totalCertificatesGeneratedInSLWByMinistryDF, "ministry_id", "total_certificates")
+      //maharashtra certificates generated
+    val maharshtraEventCertificates = eventsEnrolmentsDF
+      .filter(col("ministry_id") === "")
+      .filter(col("completed_on_datetime") >= "" && col("completed_on_datetime") <= "")
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF, Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(countDistinct("certificate_id").alias("event_certificate_count"))
+
+    val maharshtraContentCertificates = contentEnrolmentsDF
+      .filter(col("ministry_id") === "")
+      .filter(col("first_completed_on") >= "" && col("first_completed_on") <= "")
+      .filter(col("certificate_id").isNotNull)
+      .join(userDetailsDF,Seq("user_id"), "left")
+      .join(orgHierarchyDF, Seq("mdo_id"), "left")
+      .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id")))
+      .groupBy("ministry_id")
+      .agg(count("*").alias("content_certificate_count"))
+
+    val maharashtraTotalCertificates = maharshtraEventCertificates.join(maharshtraContentCertificates, Seq("ministry_id"), "full_outer")
+      .select(
+        col("ministry_id"),
+        coalesce(col("event_certificate_count"), lit(0)).alias("event_certificate_count"),
+        coalesce(col("content_certificate_count"), lit(0)).alias("content_certificate_count"),
+        (coalesce(col("event_certificate_count"), lit(0)) + coalesce(col("content_certificate_count"), lit(0))).alias("total_certificates"))
+      .filter(col("ministry_id").isNotNull)
+
+      Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", totalCertificatesGeneratedInSLWByMinistryDF.filter(col("ministry_id") =!= ""), "ministry_id", "total_certificates")
+      Redis.dispatchDataFrame[Int]("dashboard_certificates_generated_by_ministry_slw_count", maharashtraTotalCertificates, "ministry_id", "total_certificates")
+
     val slwStartDate = stateLearningWeekStartString.split(" ")(0)
     val slwEndDate = stateLearningWeekEndString.split(" ")(0)
     val slwDateConditions = s"""{"range": {"startDate": {"gte": "${slwStartDate}", "lte": "${slwEndDate}"}}}"""
@@ -140,9 +199,11 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val eventDataDF = elasticSearchDataFrame(conf.sparkElasticsearchConnectionHost, "compositesearch", eventQuery, fieldsRequired, arrayFieldsRequired)
     val eventsPublishedDF = eventDataDF.agg(
       lit("01397282245867929648").alias("ministry_id"), count("identifier").alias("events_published_count"))
+    val publishedEventsCount = eventDataDF.filter(col("createdFor") =!= "").select(countDistinct("identifier")).first().getLong(0)
+    val maharshtraEventsCount = eventDataDF.filter(col("createdFor") === "").select(countDistinct("identifier")).first().getLong(0)
 
-
-    Redis.dispatchDataFrame[Int]("dashboard_events_published_by_ministry_slw_count", eventsPublishedDF, "ministry_id", "events_published_count")
+    Redis.update("dashboard_events_published_by_ministry_slw_count", publishedEventsCount.toString)
+    Redis.update("dashboard_events_published_by_ministry_slw_count", maharshtraEventsCount.toString)
 
     val userEventCertificatesDF = eventsEnrolmentsDF
       .filter(col("completed_on_datetime") >= stateLearningWeekStartString && col("completed_on_datetime") <= stateLearningWeekEndString)
