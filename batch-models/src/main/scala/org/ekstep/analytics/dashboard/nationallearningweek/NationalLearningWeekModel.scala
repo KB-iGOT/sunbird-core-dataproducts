@@ -49,13 +49,13 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val orgHierarchyDF = cache.load("orgHierarchy")
 
     val eventCertificatesGeneratedSLWYdayDF = eventsEnrolmentsDF
-        .filter(col("completed_on_datetime") >= previousStart && col("completed_on_datetime") <= previousEnd)
-        .filter(col("certificate_id").isNotNull)
-        .join(userDetailsDF, Seq("user_id"), "left")
-        .join(orgHierarchyDF, Seq("mdo_id"), "left")
-        .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id"))) // Replace null ministry_id with mdo_id
-        .groupBy("ministry_id")
-        .agg(countDistinct("certificate_id").alias("event_certificate_count"))
+          .filter(col("completed_on_datetime") >= previousStart && col("completed_on_datetime") <= previousEnd)
+          .filter(col("certificate_id").isNotNull)
+          .join(userDetailsDF, Seq("user_id"), "left")
+          .join(orgHierarchyDF, Seq("mdo_id"), "left")
+          .withColumn("ministry_id", coalesce(col("ministry_id"), col("mdo_id"))) // Replace null ministry_id with mdo_id
+          .groupBy("ministry_id")
+          .agg(countDistinct("certificate_id").alias("event_certificate_count"))
 
     val contentCertificatesGeneratedSLWYdayDF = contentEnrolmentsDF
           .filter(col("last_certificate_generated_on") >= previousStart && col("last_certificate_generated_on") <= previousEnd)
@@ -70,7 +70,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val totalCertificatesGeneratedSLWYdayByOrgDF = eventCertificatesGeneratedSLWYdayDF
           .join(contentCertificatesGeneratedSLWYdayDF, Seq("ministry_id"), "outer")
           .withColumn("total_certificate_generatedYday_slw_count", coalesce(col("event_certificate_count"), lit(0)) +
-            coalesce(col("content_certificate_count"), lit(0)))
+          coalesce(col("content_certificate_count"), lit(0)))
           .filter(col("ministry_id").isNotNull)
 
     Redis.dispatchDataFrame[Int]("dashboard_certificate_generated_yday_by_ministry_slw_count", totalCertificatesGeneratedSLWYdayByOrgDF, "ministry_id", "total_certificate_generatedYday_slw_count")
@@ -94,7 +94,7 @@ object NationalLearningWeekModel extends AbsDashboardModel {
     val totalEnrolmentsInSLWByMinistryDF = eventEnrolmentsInSLWDF
           .join(contentEnrolmentsInSLWDF, Seq("ministry_id"), "full_outer")
           .select(col("ministry_id"), coalesce(col("event_enrolment_count"), lit(0)).alias("event_enrolment_count"), coalesce(col("content_enrolment_count"), lit(0)).alias("content_enrolment_count"),
-            (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
+          (coalesce(col("event_enrolment_count"), lit(0)) + coalesce(col("content_enrolment_count"), lit(0))).alias("total_enrolments"))
           .filter(col("ministry_id").isNotNull)
 
       // for maharashtra
