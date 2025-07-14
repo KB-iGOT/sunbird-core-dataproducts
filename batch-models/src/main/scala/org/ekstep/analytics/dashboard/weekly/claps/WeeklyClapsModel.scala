@@ -1,8 +1,10 @@
 package org.ekstep.analytics.dashboard.weekly.claps
 
 import org.apache.spark.SparkContext
+import org.apache.spark.sql._
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
 import org.ekstep.analytics.dashboard.DashboardUtil._
 import org.ekstep.analytics.dashboard.DataUtil._
 import java.sql.{Connection, DriverManager, Statement}
@@ -19,6 +21,7 @@ object WeeklyClapsModel extends AbsDashboardModel {
 
   def processData(timestamp: Long)(implicit spark: SparkSession, sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
   try{
+    val today = getDate()
     // get weekStart, weekEnd and dataTillDate(previous day) from today's date
     val (weekStart, weekEnd, weekEndTime, dataTillDate) = getThisWeekDates()
 //    val weekStart = ""     //for manual testing
@@ -76,9 +79,13 @@ object WeeklyClapsModel extends AbsDashboardModel {
 
     df = df.drop("platformEngagementTime","sessionCount")
 
-    val finalDF = df.withColumn("w4", to_json(col("w4")))
+    val finalDF =  df.withColumn("w1", safeToJson(df, "w1"))
+      .withColumn("w2", safeToJson(df, "w2"))
+      .withColumn("w3", safeToJson(df, "w3"))
+      .withColumn("w4", safeToJson(df, "w4"))
 
-    //finalDF.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", true).save("/tmp/weeklyClaps")
+
+    finalDF.coalesce(1).write.mode(SaveMode.Overwrite).format("csv").option("header", true).save(s"/tmp/weeklyClaps${today}")
     truncateWarehouseTable(conf.dwLearnerStatsTable, appPostgresUrl)
     saveDataframeToPostgresTable_With_Append(finalDF, appPostgresUrl, conf.dwLearnerStatsTable, conf.appPostgresUsername, conf.appPostgresCredential)
 
@@ -87,5 +94,12 @@ object WeeklyClapsModel extends AbsDashboardModel {
       println(s"Error occurred during WeeklyClapsModel processing: ${e.getMessage}", e)
       System.exit(1)
   }
+  }
+  def safeToJson(df: DataFrame, colName: String): Column = {
+    if (df.schema(colName).dataType.isInstanceOf[StructType]) {
+      to_json(col(colName))
+    } else {
+      col(colName)
+    }
   }
 }
