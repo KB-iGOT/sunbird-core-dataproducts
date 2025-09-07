@@ -24,12 +24,14 @@ import org.sunbird.cloud.storage.factory.{StorageConfig, StorageServiceFactory}
 import redis.clients.jedis.exceptions.JedisException
 import redis.clients.jedis.params.ScanParams
 
-import java.io.{File, FileWriter, Serializable}
+import java.io.{File, FileWriter, Serializable, BufferedReader, InputStreamReader}
 import java.util
 import scala.util.Try
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.io.Directory
+import java.nio.charset.StandardCharsets
+import org.apache.hadoop.io.IOUtils
 
 case class DummyInput(timestamp: Long) extends AlgoInput  // no input, there are multiple sources to query
 case class DummyOutput() extends Output with AlgoOutput  // no output as we take care of kafka dispatches ourself
@@ -731,6 +733,7 @@ object DashboardUtil extends Serializable {
       .partitionBy(partitionKey).save(path)
   }
 
+  /*
   def generateReport(df: DataFrame, reportPath: String, partitionKey: String = null, fileName: String = null, fileSaveMode: SaveMode = SaveMode.Overwrite)(implicit spark: SparkSession, sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
     import spark.implicits._
     val reportFullPath = s"${conf.localReportDir}/${reportPath}"
@@ -747,6 +750,7 @@ object DashboardUtil extends Serializable {
     StorageUtil.removeFile(s"${reportFullPath}/_SUCCESS") // remove success file
     println(s"REPORT: Finished Writing report to ${reportFullPath}")
   }
+  */
 
   def kafkaDispatch(data: RDD[String], topic: String)(implicit sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
     if (topic == "") {
@@ -1373,4 +1377,156 @@ object Redis extends Serializable {
     dispatch(redisKey, df.toMap[T](keyField, valueField), replace)
   }
 
+    /**
+    * Merge all CSV part files under srcDir into a single CSV file destFile.
+    * Writes one header, skips headers from each part (assuming header=true on write).
+    */
+  def mergeCsvDirToSingleFile(
+      srcDir: String,
+      destFile: String,
+      header: Option[String],
+      partsHaveHeader: Boolean,
+      deleteSrcParts: Boolean = false
+  )(implicit sc: SparkContext): Unit = {
+    val hconf = sc.hadoopConfiguration
+    val dirPath = new Path(srcDir)
+    val fs = dirPath.getFileSystem(hconf)
+
+    val partFiles = fs.listStatus(dirPath)
+      .filter(s => s.isFile && s.getPath.getName.startsWith("part-") && s.getPath.getName.endsWith(".csv"))
+      .sortBy(_.getPath.getName)
+
+    require(partFiles.nonEmpty, s"No part files found under $srcDir")
+
+    val tmpOut = new Path(destFile + ".tmp")
+    val out = fs.create(tmpOut, true)
+    val nl = "\n".getBytes(StandardCharsets.UTF_8)
+
+    // Resolve header
+    val headerStr: String = header.getOrElse {
+      val in0 = fs.open(partFiles.head.getPath)
+      val br0 = new BufferedReader(new InputStreamReader(in0, StandardCharsets.UTF_8))
+      try Option(br0.readLine()).getOrElse("") finally { br0.close(); in0.close() }
+    }
+
+    try {
+      if (headerStr.nonEmpty) { out.write(headerStr.getBytes(StandardCharsets.UTF_8)); out.write(nl) }
+
+      partFiles.foreach { st =>
+        val in = fs.open(st.getPath)
+        try {
+          if (partsHaveHeader) {
+            val br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))
+            var line = br.readLine() // drop header
+            line = br.readLine()
+            while (line != null) {
+              out.write(line.getBytes(StandardCharsets.UTF_8))
+              out.write(nl)
+              line = br.readLine()
+            }
+            br.close()
+          } else {
+            IOUtils.copyBytes(in, out, hconf, false)
+          }
+        } finally in.close()
+      }
+    } finally out.close()
+
+    val finalPath = new Path(destFile)
+    if (fs.exists(finalPath)) fs.delete(finalPath, false)
+    fs.rename(tmpOut, finalPath)
+
+    if (deleteSrcParts) {
+      partFiles.foreach(st => fs.delete(st.getPath, false))
+      val success = new Path(dirPath, "_SUCCESS")
+      if (fs.exists(success)) fs.delete(success, false)
+    }
+  }
+
+  /**
+    * For a dataset written with partitionBy(partitionKey), merge each directory
+    * partitionKey=value/ into a single CSV named {filePrefix}-{value}.csv in the rootDir.
+    */
+  def mergeEachPartition(
+      rootDir: String,
+      partitionKey: String,
+      filePrefix: String,
+      header: String,
+      partsHaveHeader: Boolean,
+      deleteSrcParts: Boolean = false
+  )(implicit sc: SparkContext): Unit = {
+    val hconf = sc.hadoopConfiguration
+    val root = new Path(rootDir)
+    val fs = root.getFileSystem(hconf)
+
+    fs.listStatus(root)
+      .filter(_.isDirectory)
+      .map(_.getPath)
+      .filter(_.getName.startsWith(s"$partitionKey="))
+      .foreach { partDir =>
+        val value = partDir.getName.split("=", 2).last
+        val dest = s"$rootDir/$filePrefix-$value.csv"
+        mergeCsvDirToSingleFile(
+          srcDir = partDir.toString,
+          destFile = dest,
+          header = Some(header),
+          partsHaveHeader = partsHaveHeader,
+          deleteSrcParts = deleteSrcParts
+        )
+      }
+  }
+
+    def generateReport(
+    df: DataFrame,
+    reportPath: String,
+    partitionKey: String = null,
+    fileName: String = null,
+    fileSaveMode: SaveMode = SaveMode.Overwrite
+  )(implicit spark: SparkSession, sc: SparkContext, fc: FrameworkContext, conf: DashboardConfig): Unit = {
+
+    val reportFullPath = s"${conf.localReportDir}/$reportPath"
+    println(s"REPORT: Writing report to $reportFullPath ...")
+
+    // Always write in parallel to avoid OOMs; keep header=true
+    if (partitionKey == null) {
+      csvWrite(df, reportFullPath, saveMode = fileSaveMode)
+      // If a single-file deliverable is needed, merge parts post-write
+      if (fileName != null) {
+        val header = df.columns.mkString(",")
+        StorageUtil.mergeCsvDirToSingleFile(
+          srcDir = reportFullPath,
+          destFile = s"$reportFullPath/$fileName",
+          header = Some(header),
+          partsHaveHeader = true,
+          deleteSrcParts = false // set true if you want to delete part-*.csv
+        )
+      } else {
+        // (legacy behavior) if you still want numbered copies, keep this:
+        // StorageUtil.renameCSVWithoutPartitions(reportFullPath, "part-merged.csv")
+      }
+    } else {
+      // Partitioned write; do NOT collect distinct keys to the driver
+      csvWritePartition(df, reportFullPath, partitionKey)
+
+      if (fileName != null) {
+        val header = df.columns.mkString(",")
+        StorageUtil.mergeEachPartition(
+          rootDir = reportFullPath,
+          partitionKey = partitionKey,
+          filePrefix = fileName,   // produces: <fileName>-<partitionValue>.csv
+          header = header,
+          partsHaveHeader = true,
+          deleteSrcParts = false   // set true to clean up part-*.csv inside each partition dir
+        )
+      } else {
+        // (legacy behavior) leave as multiple part files under partition dirs
+        // or keep your old rename if some external process expects it:
+        // val ids = df.select(partitionKey).distinct().na.drop().as[String].collectAsList()
+        // StorageUtil.renameCSV(ids, reportFullPath, fileName, partitionKey)
+      }
+    }
+
+    StorageUtil.removeFile(s"$reportFullPath/_SUCCESS")
+    println(s"REPORT: Finished Writing report to $reportFullPath")
+  }
 }
