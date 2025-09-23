@@ -14,7 +14,6 @@ object UserAssessmentModel extends AbsDashboardModel {
   implicit val className: String = "org.ekstep.analytics.dashboard.report.assess.UserAssessmentModel"
   override def name() = "UserAssessmentModel"
 
-
   /**
    * Master method, does all the work, fetching, processing and dispatching
    *
@@ -30,22 +29,22 @@ object UserAssessmentModel extends AbsDashboardModel {
     val (hierarchyDF, allCourseProgramDetailsWithCompDF, allCourseProgramDetailsDF,
       allCourseProgramDetailsWithRatingDF) = contentDataFrames(orgDF)
 
-    val assessmentDF = assessmentESDataFrame(Seq("Standalone Assessment")).cache()
-    val assessWithHierarchyDF = assessWithHierarchyDataFrame(assessmentDF, hierarchyDF, orgDF).cache()
-    val assessWithDetailsDF = assessWithHierarchyDF.drop("children").cache()
+    val assessmentDF = assessmentESDataFrame(Seq("Standalone Assessment"))
+    val assessWithHierarchyDF = assessWithHierarchyDataFrame(assessmentDF, hierarchyDF, orgDF)
+    val assessWithDetailsDF = assessWithHierarchyDF.drop("children")
 
     // kafka dispatch to dashboard.assessment
     kafkaDispatch(withTimestamp(assessWithDetailsDF, timestamp), conf.assessmentTopic)
 
-    val assessChildrenDF = assessmentChildrenDataFrame(assessWithHierarchyDF).cache()
-    assessChildrenDF.show(false)
+    val assessChildrenDF = assessmentChildrenDataFrame(assessWithHierarchyDF)
+    
     val userAssessmentDF = cache.load("userAssessment")
-    userAssessmentDF.show(false)
+    
     val userAssessChildrenDF = userAssessmentChildrenDataFrame(userAssessmentDF, assessChildrenDF)
-    userAssessChildrenDF.show(false)
+    
     val userAssessChildrenDetailsDF = userAssessmentChildrenDetailsDataFrame(userAssessChildrenDF, assessWithDetailsDF,
       allCourseProgramDetailsWithRatingDF, userOrgDF)
-    userAssessChildrenDetailsDF.show(false)
+    
     // kafka dispatch to dashboard.user.assessment
     kafkaDispatch(withTimestamp(userAssessChildrenDetailsDF, timestamp), conf.userAssessmentTopic)
 
@@ -62,7 +61,6 @@ object UserAssessmentModel extends AbsDashboardModel {
         expr("COUNT(*)").alias("noOfAttempts")
       )
 
-    latest.show(false)
     val caseExpression = "CASE WHEN assessPass == 1 AND assessUserStatus == 'SUBMITTED' THEN 'Pass' WHEN assessPass == 0 AND assessUserStatus == 'SUBMITTED' THEN 'Fail' " +
       " ELSE 'N/A' END"
     val caseExpressionCompletionStatus = "CASE WHEN assessUserStatus == 'SUBMITTED' THEN 'Completed' ELSE 'In progress' END"
@@ -88,7 +86,6 @@ object UserAssessmentModel extends AbsDashboardModel {
         col("Report_Last_Generated_On")
       ).coalesce(1)
     
-    df.show(false)
     val columnsToKeepInReport = df.columns.filter(_ != "status")
     val reportPath = s"${conf.standaloneAssessmentReportPath}/${today}"
     // generateReport(df, s"${reportPath}-full")
