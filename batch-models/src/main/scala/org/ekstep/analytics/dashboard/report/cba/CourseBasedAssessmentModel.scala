@@ -29,7 +29,7 @@ object CourseBasedAssessmentModel extends AbsDashboardModel {
     allCourseProgramDetailsWithRatingDF) = contentDataFrames(orgDF, Seq("Course", "Program", "Blended Program", "Standalone Assessment", "Curated Program"), runValidation = false)
 
     val assessmentDF = assessmentESDataFrame(Seq("Course", "Standalone Assessment", "Blended Program"))
-    val assessWithHierarchyDF = assessWithHierarchyDataFrame(assessmentDF, hierarchyDF, orgDF).cache()
+    val assessWithHierarchyDF = assessWithHierarchyDataFrame(assessmentDF, hierarchyDF, orgDF)
     val assessWithDetailsDF = assessWithHierarchyDF.drop("children")
 
     val assessChildrenDF = assessmentChildrenDataFrame(assessWithHierarchyDF)
@@ -42,7 +42,7 @@ object CourseBasedAssessmentModel extends AbsDashboardModel {
 
     val orgHierarchyData = orgHierarchyDataframe()
     val userAssessChildDataDF = userAssessChildrenDetailsDF
-      .join(broadcast(orgHierarchyData), Seq("userOrgID"), "left")
+      .join(orgHierarchyData, Seq("userOrgID"), "left")
 
     val retakesDF = userAssessChildDataDF
       .groupBy("assessChildID", "userID")
@@ -51,7 +51,7 @@ object CourseBasedAssessmentModel extends AbsDashboardModel {
     val userAssessChildDataLatestDF = userAssessChildDataDF
       .groupByLimit(Seq("assessChildID", "userID"), "assessEndTimestamp", 1, desc = true)
       .drop("rowNum")
-      .join(broadcast(retakesDF), Seq("assessChildID", "userID"), "left")
+      .join(retakesDF, Seq("assessChildID", "userID"), "left")
 
     val finalDF = userAssessChildDataLatestDF
       .withColumn("userAssessmentDuration", unix_timestamp(col("assessEndTimestamp")) - unix_timestamp(col("assessStartTimestamp")))
@@ -68,7 +68,6 @@ object CourseBasedAssessmentModel extends AbsDashboardModel {
       .withColumn("course_id", when(col("assessCategory") === "Standalone Assessment", lit(""))
         .otherwise(col("assessID")))
       .withColumn("Tags", concat_ws(", ", col("additionalProperties.tag")))
-      .cache()
 
     val fullReportDFNew = finalDF
       .withColumn("MDO_Name", col("userOrgName"))
@@ -113,7 +112,7 @@ object CourseBasedAssessmentModel extends AbsDashboardModel {
 
 
     // Join using a single column or Seq if multiple columns
-    val userOrgHierarchyDataDF = userOrgDF.join(broadcast(orgHierarchyData), Seq("userOrgID"), "left")
+    val userOrgHierarchyDataDF = userOrgDF.join(orgHierarchyData, Seq("userOrgID"), "left")
     val oldAssessmentData = cache.load("oldAssessmentDetails").withColumnRenamed("user_id", "userID").withColumnRenamed("parent_source_id", "courseID")
 
     val fullReportDFOldDraft = oldAssessmentData.join(allCourseProgramDetailsDF, Seq("courseID"), "left").join(userOrgHierarchyDataDF, Seq("userID"), "left")
