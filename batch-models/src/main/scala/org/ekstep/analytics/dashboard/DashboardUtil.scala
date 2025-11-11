@@ -409,10 +409,9 @@ object DashboardConfigParser extends Serializable {
       // warehouse report path
       warehouseReportPath = getConfigModelParam(config, "warehouseReportPath", "warehouse"),
       destinationFullReportPath = getConfigModelParam(config, "destinationFullReportPath", "/standalone-reports/full_report"),
-      trendingEventsCount = getConfigModelParam(config, "trendingEventsCount"),
-      featuredEventsCount = getConfigModelParam(config, "featuredEventsCount")
+      trendingEventsCount = getConfigModelParam(config, "trendingEventsCount").toInt,
+      featuredEventsCount = getConfigModelParam(config, "featuredEventsCount").toInt
     )
-  }
   /* Config functions end */
 }
 
