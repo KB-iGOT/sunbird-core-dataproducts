@@ -965,7 +965,8 @@ object DashboardSyncModel extends AbsDashboardModel {
 
     // trending events and featured events for events hub - start
     val liveEventsDF = eventsEnrolmentDataDF.join(eventDetails, Seq("event_id"), "inner").filter(eventDetails("event_status") === "Live").select(eventsEnrolmentDataDF("*"))
-    val joinedDF = liveEventsDF.join(userOrgDF.withColumnRenamed("userID", "user_id"), Seq("user_id"), "inner")
+    val joinedRawDF = liveEventsDF.join(userOrgDF.withColumnRenamed("userID", "user_id"), Seq("user_id"), "inner")
+    val joinedDF = joinedRawDF.dropDuplicates("userOrgID", "user_id", "event_id")
 
     val trendingEventsCount =  conf.trendingEventsCount
     val featuredEventsCount =  conf.featuredEventsCount
